@@ -181,7 +181,7 @@ pub trait BuildAllocRef: Sized {
     ) -> Self::Ref;
 }
 
-pub trait DeallocRef: Sized {
+pub trait DeallocRef: Sized + Copy {
     type BuildAlloc: BuildAllocRef<Ref = Self>;
 
     fn get_build_alloc(&mut self) -> Self::BuildAlloc;
@@ -192,15 +192,15 @@ pub trait DeallocRef: Sized {
     /// * `layout` must *fit* that block of memory
     /// * the alignment of the `layout` must match the alignment used to allocate that block of
     ///   memory
-    unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: NonZeroLayout);
+    unsafe fn dealloc(self, ptr: NonNull<u8>, layout: NonZeroLayout);
 }
 
 pub trait AllocRef: DeallocRef {
     type Error;
 
-    fn alloc(&mut self, layout: NonZeroLayout) -> Result<NonNull<u8>, Self::Error>;
+    fn alloc(self, layout: NonZeroLayout) -> Result<NonNull<u8>, Self::Error>;
 
-    fn alloc_zeroed(&mut self, layout: NonZeroLayout) -> Result<NonNull<u8>, Self::Error> {
+    fn alloc_zeroed(self, layout: NonZeroLayout) -> Result<NonNull<u8>, Self::Error> {
         let size = layout.size();
         let p = self.alloc(layout)?;
         unsafe {
@@ -209,7 +209,7 @@ pub trait AllocRef: DeallocRef {
         Ok(p)
     }
 
-    fn usable_size(&self, layout: NonZeroLayout) -> (usize, usize) {
+    fn usable_size(self, layout: NonZeroLayout) -> (usize, usize) {
         (layout.size().get(), layout.size().get())
     }
 
@@ -219,7 +219,7 @@ pub trait AllocRef: DeallocRef {
     /// * `layout` must *fit* the `ptr` (see above); note the `new_size` argument need not fit it
     /// * `new_size` must not be less than `layout.size()`
     unsafe fn grow_in_place(
-        &mut self,
+        self,
         ptr: NonNull<u8>,
         layout: NonZeroLayout,
         new_size: NonZeroUsize,
@@ -238,7 +238,7 @@ pub trait AllocRef: DeallocRef {
     /// * `layout` must *fit* the `ptr` (see above); note the `new_size` argument need not fit it
     /// * `new_size` must not be greater than `layout.size()` (and must be greater than zero)
     unsafe fn shrink_in_place(
-        &mut self,
+        self,
         ptr: NonNull<u8>,
         layout: NonZeroLayout,
         new_size: NonZeroUsize,
@@ -277,7 +277,7 @@ pub trait ReallocRef: AllocRef {
     /// implement this trait atop an underlying native allocation
     /// library that aborts on memory exhaustion.)
     unsafe fn realloc(
-        &mut self,
+        self,
         ptr: NonNull<u8>,
         old_layout: NonZeroLayout,
         new_layout: NonZeroLayout,
@@ -344,7 +344,7 @@ impl DeallocRef for Global {
         Self
     }
 
-    unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: NonZeroLayout) {
+    unsafe fn dealloc(self, ptr: NonNull<u8>, layout: NonZeroLayout) {
         #[allow(deprecated)]
         dealloc(ptr.as_ptr(), layout.into())
     }
@@ -353,14 +353,14 @@ impl DeallocRef for Global {
 impl AllocRef for Global {
     type Error = AllocErr;
 
-    fn alloc(&mut self, layout: NonZeroLayout) -> Result<NonNull<u8>, Self::Error> {
+    fn alloc(self, layout: NonZeroLayout) -> Result<NonNull<u8>, Self::Error> {
         #[allow(deprecated)]
         unsafe {
             NonNull::new(alloc(layout.into())).ok_or(AllocErr)
         }
     }
 
-    fn alloc_zeroed(&mut self, layout: NonZeroLayout) -> Result<NonNull<u8>, Self::Error> {
+    fn alloc_zeroed(self, layout: NonZeroLayout) -> Result<NonNull<u8>, Self::Error> {
         #[allow(deprecated)]
         unsafe {
             NonNull::new(alloc_zeroed(layout.into())).ok_or(AllocErr)
@@ -371,7 +371,7 @@ impl AllocRef for Global {
 impl ReallocRef for Global {
     // FIXME: Remove `else` branch. This is needed, as std provides old method.
     unsafe fn realloc(
-        &mut self,
+        self,
         ptr: NonNull<u8>,
         old_layout: NonZeroLayout,
         new_layout: NonZeroLayout,
@@ -399,8 +399,8 @@ impl DeallocRef for System {
         Self
     }
 
-    unsafe fn dealloc(&mut self, ptr: NonNull<u8>, layout: NonZeroLayout) {
-        GlobalAlloc::dealloc(self, ptr.as_ptr(), layout.into())
+    unsafe fn dealloc(self, ptr: NonNull<u8>, layout: NonZeroLayout) {
+        GlobalAlloc::dealloc(&self, ptr.as_ptr(), layout.into())
     }
 }
 
@@ -408,12 +408,12 @@ impl DeallocRef for System {
 impl AllocRef for System {
     type Error = AllocErr;
 
-    fn alloc(&mut self, layout: NonZeroLayout) -> Result<NonNull<u8>, Self::Error> {
-        unsafe { NonNull::new(GlobalAlloc::alloc(self, layout.into())).ok_or(AllocErr) }
+    fn alloc(self, layout: NonZeroLayout) -> Result<NonNull<u8>, Self::Error> {
+        unsafe { NonNull::new(GlobalAlloc::alloc(&self, layout.into())).ok_or(AllocErr) }
     }
 
-    fn alloc_zeroed(&mut self, layout: NonZeroLayout) -> Result<NonNull<u8>, Self::Error> {
-        unsafe { NonNull::new(GlobalAlloc::alloc_zeroed(self, layout.into())).ok_or(AllocErr) }
+    fn alloc_zeroed(self, layout: NonZeroLayout) -> Result<NonNull<u8>, Self::Error> {
+        unsafe { NonNull::new(GlobalAlloc::alloc_zeroed(&self, layout.into())).ok_or(AllocErr) }
     }
 }
 
@@ -421,7 +421,7 @@ impl AllocRef for System {
 impl ReallocRef for System {
     // FIXME: Remove `else` branch. This is needed, as std provides old method.
     unsafe fn realloc(
-        &mut self,
+        self,
         ptr: NonNull<u8>,
         old_layout: NonZeroLayout,
         new_layout: NonZeroLayout,
@@ -429,7 +429,7 @@ impl ReallocRef for System {
         // TODO: Test if this is a well suited case for `likely`
         if likely(old_layout.align() == new_layout.align()) {
             NonNull::new(GlobalAlloc::realloc(
-                self,
+                &self,
                 ptr.as_ptr(),
                 old_layout.into(),
                 new_layout.size().get(),
@@ -443,7 +443,7 @@ impl ReallocRef for System {
 
 #[inline]
 unsafe fn alloc_copy_dealloc<A: ReallocRef>(
-    alloc: &mut A,
+    mut alloc: A,
     ptr: NonNull<u8>,
     old_layout: NonZeroLayout,
     new_layout: NonZeroLayout,
