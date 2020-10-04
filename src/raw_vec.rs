@@ -165,7 +165,7 @@ impl<T, A: AllocRef> RawVec<T, A> {
     fn allocate_in(
         capacity: usize,
         init: AllocInit,
-        mut alloc: A,
+        alloc: A,
     ) -> Result<Self, TryReserveError> {
         if mem::size_of::<T>() == 0 {
             Ok(Self::new_in(alloc))

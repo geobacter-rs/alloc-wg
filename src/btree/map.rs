@@ -518,7 +518,7 @@ pub struct VacantEntry<'a, K: 'a, V: 'a, A: AllocRef> {
     handle: Handle<NodeRef<marker::Mut<'a>, K, V, marker::Leaf>, marker::Edge>,
     dormant_map: DormantMutRef<'a, BTreeMap<K, V, A>>,
 
-    alloc: &'a mut A,
+    alloc: &'a A,
 
     // Be invariant in `K` and `V`
     _marker: PhantomData<&'a mut (K, V)>,
@@ -1422,14 +1422,14 @@ impl<K: Ord, V, A: AllocRef> BTreeMap<K, V, A> {
     /// assert_eq!(odds.keys().copied().collect::<Vec<_>>(), vec![1, 3, 5, 7]);
     /// ```
     //#[unstable(feature = "btree_drain_filter", issue = "70530")]
-    pub fn drain_filter<F>(&mut self, pred: F) -> DrainFilter<'_, K, V, F, &mut A>
+    pub fn drain_filter<F>(&mut self, pred: F) -> DrainFilter<'_, K, V, F, &A>
     where
         F: FnMut(&K, &mut V) -> bool,
     {
         let (inner, alloc) = self.drain_filter_inner();
         DrainFilter { pred, inner, alloc }
     }
-    pub(super) fn drain_filter_inner(&mut self) -> (DrainFilterInner<'_, K, V>, &mut A) {
+    pub(super) fn drain_filter_inner(&mut self) -> (DrainFilterInner<'_, K, V>, &A) {
         if let Some(root) = self.root.as_mut() {
             let (root, dormant_root) = DormantMutRef::new(root);
             let front = root.node_as_mut().first_leaf_edge();
@@ -1717,7 +1717,7 @@ impl<K, V, A: AllocRef> Iterator for IntoIter<K, V, A> {
             None
         } else {
             self.length -= 1;
-            Some(unsafe { self.front.as_mut().unwrap().next_unchecked(&mut self.alloc) })
+            Some(unsafe { self.front.as_mut().unwrap().next_unchecked(&self.alloc) })
         }
     }
 
@@ -1737,7 +1737,7 @@ impl<K, V, A: AllocRef> DoubleEndedIterator for IntoIter<K, V, A> {
                 self.back
                     .as_mut()
                     .unwrap()
-                    .next_back_unchecked(&mut self.alloc)
+                    .next_back_unchecked(&self.alloc)
             })
         }
     }
@@ -1917,7 +1917,7 @@ impl<'a, K: 'a, V: 'a> DrainFilterInner<'a, K, V> {
     }
 
     /// Implementation of a typical `DrainFilter::next` method, given the predicate.
-    pub(super) fn next<F, A: AllocRef>(&mut self, pred: &mut F, alloc: &mut A) -> Option<(K, V)>
+    pub(super) fn next<F, A: AllocRef>(&mut self, pred: &mut F, alloc: &A) -> Option<(K, V)>
     where
         F: FnMut(&K, &mut V) -> bool,
     {
@@ -2694,10 +2694,10 @@ impl<'a, K: Ord, V, A: AllocRef> VacantEntry<'a, K, V, A> {
     /// assert_eq!(map["poneyland"], 37);
     /// ```
     //#[stable(feature = "rust1", since = "1.0.0")]
-    pub fn insert(mut self, value: V) -> &'a mut V {
+    pub fn insert(self, value: V) -> &'a mut V {
         let out_ptr = match self
             .handle
-            .insert_recursing(self.key, value, &mut self.alloc)
+            .insert_recursing(self.key, value, self.alloc)
         {
             (Fit(_), val_ptr) => {
                 // Safety: We have consumed self.handle and the handle returned.
@@ -2710,7 +2710,7 @@ impl<'a, K: Ord, V, A: AllocRef> VacantEntry<'a, K, V, A> {
                 // Safety: We have consumed self.handle and the reference returned.
                 let map = unsafe { self.dormant_map.awaken() };
                 let root = map.root.as_mut().unwrap();
-                root.push_internal_level(&mut *self.alloc)
+                root.push_internal_level(self.alloc)
                     .push(ins.k, ins.v, ins.right);
                 map.length += 1;
                 val_ptr
@@ -2898,10 +2898,10 @@ impl<'a, K: Ord, V, A: AllocRef> OccupiedEntry<'a, K, V, A> {
 impl<'a, K: 'a, V: 'a> Handle<NodeRef<marker::Mut<'a>, K, V, marker::LeafOrInternal>, marker::KV> {
     /// Removes a key/value-pair from the map, and returns that pair, as well as
     /// the leaf edge corresponding to that former pair.
-    fn remove_kv_tracking<F: FnOnce(&mut A), A: AllocRef>(
+    fn remove_kv_tracking<F: FnOnce(&A), A: AllocRef>(
         self,
         handle_emptied_internal_root: F,
-        mut alloc: &mut A,
+        alloc: &A,
     ) -> (
         (K, V),
         Handle<NodeRef<marker::Mut<'a>, K, V, marker::Leaf>, marker::Edge>,
@@ -2942,7 +2942,7 @@ impl<'a, K: 'a, V: 'a> Handle<NodeRef<marker::Mut<'a>, K, V, marker::LeafOrInter
         let mut cur_node = unsafe { ptr::read(&pos).into_node().forget_type() };
         let mut at_leaf = true;
         while cur_node.len() < node::MIN_LEN {
-            match handle_underfull_node(cur_node, &mut alloc) {
+            match handle_underfull_node(cur_node, alloc) {
                 AtRoot => break,
                 Merged(edge, merged_with_left, offset) => {
                     // If we merged with our right sibling then our tracked
@@ -2962,7 +2962,7 @@ impl<'a, K: 'a, V: 'a> Handle<NodeRef<marker::Mut<'a>, K, V, marker::LeafOrInter
                         // The parent that was just emptied must be the root,
                         // because nodes on a lower level would not have been
                         // left with a single child.
-                        handle_emptied_internal_root(&mut alloc);
+                        handle_emptied_internal_root(alloc);
                         break;
                     } else {
                         cur_node = parent.forget_type();
@@ -2995,13 +2995,13 @@ impl<'a, K: 'a, V: 'a> Handle<NodeRef<marker::Mut<'a>, K, V, marker::LeafOrInter
 
 impl<K, V> node::Root<K, V> {
     /// Removes empty levels on the top, but keep an empty leaf if the entire tree is empty.
-    fn fix_top<A: AllocRef>(&mut self, alloc: &mut A) {
+    fn fix_top<A: AllocRef>(&mut self, alloc: &A) {
         while self.height() > 0 && self.node_as_ref().len() == 0 {
-            self.pop_internal_level(&mut *alloc);
+            self.pop_internal_level(alloc);
         }
     }
 
-    fn fix_right_border<A: AllocRef>(&mut self, alloc: &mut A) {
+    fn fix_right_border<A: AllocRef>(&mut self, alloc: &A) {
         self.fix_top(alloc);
 
         {
@@ -3011,7 +3011,7 @@ impl<K, V> node::Root<K, V> {
                 let mut last_kv = node.last_kv();
 
                 if last_kv.can_merge() {
-                    cur_node = last_kv.merge(&mut *alloc).descend();
+                    cur_node = last_kv.merge(alloc).descend();
                 } else {
                     let right_len = last_kv.reborrow().right_edge().descend().len();
                     // `MINLEN + 1` to avoid readjust if merge happens on the next level.
@@ -3027,7 +3027,7 @@ impl<K, V> node::Root<K, V> {
     }
 
     /// The symmetric clone of `fix_right_border`.
-    fn fix_left_border<A: AllocRef>(&mut self, alloc: &mut A) {
+    fn fix_left_border<A: AllocRef>(&mut self, alloc: &A) {
         self.fix_top(alloc);
 
         {
@@ -3064,7 +3064,7 @@ enum UnderflowResult<'a, K, V> {
 
 fn handle_underfull_node<'a, K: 'a, V: 'a, A: AllocRef>(
     node: NodeRef<marker::Mut<'a>, K, V, marker::LeafOrInternal>,
-    alloc: &mut A,
+    alloc: &A,
 ) -> UnderflowResult<'a, K, V> {
     let parent = match node.ascend() {
         Ok(parent) => parent,

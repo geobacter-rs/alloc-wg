@@ -175,7 +175,7 @@ impl<K, V> Root<K, V> {
     }
 
     /// Returns a new owned tree, with its own root node that is initially empty.
-    pub fn new_leaf<A: AllocRef>(alloc: &mut A) -> Self {
+    pub fn new_leaf<A: AllocRef>(alloc: &A) -> Self {
         Root {
             node: BoxedNode::from_leaf(Box::new_in(unsafe { LeafNode::new() }, alloc)),
             height: 0,
@@ -221,7 +221,7 @@ impl<K, V> Root<K, V> {
     /// `pop_internal_level`.
     pub fn push_internal_level<A: AllocRef>(
         &mut self,
-        alloc: &mut A,
+        alloc: &A,
     ) -> NodeRef<marker::Mut<'_>, K, V, marker::Internal> {
         let mut new_node = Box::new_in(unsafe { InternalNode::new() }, alloc);
         new_node.edges[0].write(unsafe { BoxedNode::from_ptr(self.node.as_ptr()) });
@@ -251,7 +251,7 @@ impl<K, V> Root<K, V> {
     /// it will not invalidate existing handles or references to the root node.
     ///
     /// Panics if there is no internal level, i.e., if the root node is a leaf.
-    pub fn pop_internal_level<A: AllocRef>(&mut self, alloc: &mut A) {
+    pub fn pop_internal_level<A: AllocRef>(&mut self, alloc: &A) {
         assert!(self.height > 0);
 
         let top = self.node.ptr;
@@ -468,7 +468,7 @@ impl<K, V> NodeRef<marker::Owned, K, V, marker::LeafOrInternal> {
     /// current node will still be accessible despite being deallocated.
     pub unsafe fn deallocate_and_ascend<A: AllocRef>(
         self,
-        alloc: &mut A,
+        alloc: &A,
     ) -> Option<Handle<NodeRef<marker::Owned, K, V, marker::Internal>, marker::Edge>> {
         let height = self.height;
         let node = self.node;
@@ -1022,7 +1022,7 @@ impl<'a, K: 'a, V: 'a> Handle<NodeRef<marker::Mut<'a>, K, V, marker::Leaf>, mark
         mut self,
         key: K,
         val: V,
-        alloc: &mut A,
+        alloc: &A,
     ) -> (InsertResult<'a, K, V, marker::Leaf>, *mut V) {
         if self.node.len() < CAPACITY {
             let val_ptr = self.insert_fit(key, val);
@@ -1104,7 +1104,7 @@ impl<'a, K: 'a, V: 'a> Handle<NodeRef<marker::Mut<'a>, K, V, marker::Internal>, 
         key: K,
         val: V,
         edge: Root<K, V>,
-        alloc: &mut A,
+        alloc: &A,
     ) -> InsertResult<'a, K, V, marker::Internal> {
         assert!(edge.height == self.node.height - 1);
 
@@ -1150,9 +1150,9 @@ impl<'a, K: 'a, V: 'a> Handle<NodeRef<marker::Mut<'a>, K, V, marker::Leaf>, mark
         self,
         key: K,
         value: V,
-        alloc: &mut A,
+        alloc: &A,
     ) -> (InsertResult<'a, K, V, marker::LeafOrInternal>, *mut V) {
-        let (mut split, val_ptr) = match self.insert(key, value, &mut *alloc) {
+        let (mut split, val_ptr) = match self.insert(key, value, alloc) {
             (InsertResult::Fit(handle), ptr) => {
                 return (InsertResult::Fit(handle.forget_node_type()), ptr);
             }
@@ -1161,7 +1161,7 @@ impl<'a, K: 'a, V: 'a> Handle<NodeRef<marker::Mut<'a>, K, V, marker::Leaf>, mark
 
         loop {
             split = match split.left.ascend() {
-                Ok(parent) => match parent.insert(split.k, split.v, split.right, &mut *alloc) {
+                Ok(parent) => match parent.insert(split.k, split.v, split.right, alloc) {
                     InsertResult::Fit(handle) => {
                         return (InsertResult::Fit(handle.forget_node_type()), val_ptr);
                     }
@@ -1276,7 +1276,7 @@ impl<'a, K: 'a, V: 'a> Handle<NodeRef<marker::Mut<'a>, K, V, marker::Leaf>, mark
     ///   allocated node.
     pub fn split<A: AllocRef>(
         mut self,
-        alloc: &mut A,
+        alloc: &A,
     ) -> (
         NodeRef<marker::Mut<'a>, K, V, marker::Leaf>,
         K,
@@ -1334,7 +1334,7 @@ impl<'a, K: 'a, V: 'a> Handle<NodeRef<marker::Mut<'a>, K, V, marker::Internal>, 
     ///   a newly allocated node.
     pub fn split<A: AllocRef>(
         mut self,
-        alloc: &mut A,
+        alloc: &A,
     ) -> (
         NodeRef<marker::Mut<'a>, K, V, marker::Internal>,
         K,
@@ -1374,7 +1374,7 @@ impl<'a, K: 'a, V: 'a> Handle<NodeRef<marker::Mut<'a>, K, V, marker::Internal>, 
     /// Panics unless this edge `.can_merge()`.
     pub fn merge<A: AllocRef>(
         mut self,
-        alloc: &mut A,
+        alloc: &A,
     ) -> Handle<NodeRef<marker::Mut<'a>, K, V, marker::Internal>, marker::Edge> {
         let self1 = unsafe { ptr::read(&self) };
         let self2 = unsafe { ptr::read(&self) };

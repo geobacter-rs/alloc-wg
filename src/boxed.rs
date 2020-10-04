@@ -79,9 +79,9 @@
 //! [`NonZeroLayout::for_value(&*value)`]: crate::alloc::NonZeroLayout::for_value
 
 use crate::{
-    alloc::{handle_alloc_error, AllocErr, AllocRef, Global, Layout},
+    alloc::{handle_alloc_error, AllocError, AllocRef, Global, Layout},
     clone::CloneIn,
-    collections::TryReserveError::{self, AllocError},
+    collections::TryReserveError,
     handle_reserve_error,
     ptr::Unique,
     raw_vec::RawVec,
@@ -201,9 +201,9 @@ impl<T, A: AllocRef> Box<T, A> {
     ///
     /// # #[allow(unused_variables)]
     /// let five = Box::try_new_in(5, Global)?;
-    /// # Ok::<_, alloc_wg::alloc::AllocErr>(())
+    /// # Ok::<_, alloc_wg::alloc::AllocError>(())
     /// ```
-    pub fn try_new_in(x: T, alloc: A) -> Result<Self, AllocErr> {
+    pub fn try_new_in(x: T, alloc: A) -> Result<Self, AllocError> {
         let mut boxed = Self::try_new_uninit_in(alloc)?;
         unsafe {
             boxed.ptr.as_mut().write(x);
@@ -257,9 +257,9 @@ impl<T, A: AllocRef> Box<T, A> {
     /// };
     ///
     /// assert_eq!(*five, 5);
-    /// # Ok::<_, alloc_wg::alloc::AllocErr>(())
+    /// # Ok::<_, alloc_wg::alloc::AllocError>(())
     /// ```
-    pub fn try_new_uninit_in(mut alloc: A) -> Result<Box<MaybeUninit<T>, A>, AllocErr> {
+    pub fn try_new_uninit_in(alloc: A) -> Result<Box<MaybeUninit<T>, A>, AllocError> {
         let memory = alloc.alloc(Layout::new::<MaybeUninit<T>>())?;
         let ptr = memory.as_mut_ptr();
         unsafe { Ok(Box::from_raw_in(ptr.cast(), alloc)) }
@@ -276,7 +276,7 @@ impl<T, A: AllocRef> Box<T, A> {
     /// Constructs a new `Pin<Box<T, A>>` with the specified allocator. If `T` does not implement
     /// `Unpin`, then `x` will be pinned in memory and unable to be moved.
     #[inline]
-    pub fn try_pin_in(x: T, a: A) -> Result<Pin<Self>, AllocErr> {
+    pub fn try_pin_in(x: T, a: A) -> Result<Pin<Self>, AllocError> {
         Self::try_new_in(x, a).map(Pin::from)
     }
 }
@@ -820,8 +820,10 @@ impl<T: Clone, A: AllocRef, B: AllocRef> CloneIn<B> for Box<T, A> {
     }
 
     fn try_clone_in(&self, a: B) -> Result<Self::Cloned, TryReserveError> {
-        Box::try_new_in(self.as_ref().clone(), a).map_err(|_| AllocError {
-            layout: Layout::new::<T>(),
+        Box::try_new_in(self.as_ref().clone(), a).map_err(|_| {
+            TryReserveError::AllocError {
+                layout: Layout::new::<T>(),
+            }
         })
     }
 }

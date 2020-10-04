@@ -1178,7 +1178,7 @@ where
 {
     pred: F,
     inner: super::map::DrainFilterInner<'a, T, ()>,
-    alloc: &'a mut A,
+    alloc: &'a A,
 }
 
 //#[unstable(feature = "btree_drain_filter", issue = "70530")]
@@ -1215,7 +1215,7 @@ where
         let pred = &mut self.pred;
         let mut mapped_pred = |k: &T, _v: &mut ()| pred(k);
         self.inner
-            .next(&mut mapped_pred, &mut self.alloc)
+            .next(&mut mapped_pred, self.alloc)
             .map(|(k, _)| k)
     }
 
