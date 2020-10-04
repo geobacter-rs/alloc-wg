@@ -16,6 +16,7 @@
 #![feature(
     allocator_api,
     alloc_layout_extra,
+    cfg_sanitize,
     coerce_unsized,
     const_alloc_layout,
     const_fn,
@@ -63,7 +64,6 @@
         rust_2018_idioms,
         trivial_casts,
         trivial_numeric_casts,
-        unused,
         unused_import_braces,
         unused_lifetimes,
         unused_qualifications,
@@ -78,12 +78,10 @@
     rust_2018_compatibility,
     rust_2018_idioms,
     single_use_lifetimes,
-    trivial_casts,
     trivial_numeric_casts,
     unused,
     unused_import_braces,
     unused_lifetimes,
-    unused_qualifications
 )]
 #![allow(
     clippy::missing_errors_doc,
@@ -92,34 +90,6 @@
     clippy::must_use_candidate,
     incomplete_features
 )]
-
-// pub mod alloc;
-pub use liballoc::alloc;
-pub mod boxed;
-mod btree;
-pub mod clone;
-pub mod collections;
-pub mod iter;
-mod ptr;
-pub mod raw_vec;
-// pub use liballoc::raw_vec;
-pub mod str;
-pub mod string;
-pub mod vec;
-
-extern crate alloc as liballoc;
-
-pub use liballoc::{borrow, fmt, rc, slice, sync};
-
-use crate::collections::TryReserveError;
-use liballoc::alloc::handle_alloc_error;
-
-// One central function responsible for reporting capacity overflows. This'll
-// ensure that the code generation related to these panics is minimal as there's
-// only one location which panics rather than a bunch throughout the module.
-pub(in crate) fn capacity_overflow() -> ! {
-    panic!("capacity overflow");
-}
 
 #[macro_export]
 macro_rules! vec {
@@ -182,6 +152,33 @@ macro_rules! format {
         let _ = write!(&mut s, $fmt, $($args),*);
         s
     }}
+}
+
+// pub mod alloc;
+pub use liballoc::alloc;
+pub mod boxed;
+mod btree;
+pub mod clone;
+pub mod collections;
+pub mod iter;
+pub mod raw_vec;
+pub mod str;
+pub mod string;
+pub mod sync;
+pub mod vec;
+
+extern crate alloc as liballoc;
+
+pub use liballoc::{borrow, fmt, rc, slice};
+
+use crate::collections::TryReserveError;
+use liballoc::alloc::handle_alloc_error;
+
+// One central function responsible for reporting capacity overflows. This'll
+// ensure that the code generation related to these panics is minimal as there's
+// only one location which panics rather than a bunch throughout the module.
+pub(in crate) fn capacity_overflow() -> ! {
+    panic!("capacity overflow");
 }
 
 pub(crate) fn handle_reserve_error<T>(result: Result<T, TryReserveError>) -> T {

@@ -83,6 +83,8 @@ use std::borrow::Cow;
 
 use crate::{alloc::handle_alloc_error, clone::CloneIn};
 pub use liballoc::string::{ParseError, ToString};
+use std::ptr::NonNull;
+use crate::str::from_utf8_unchecked_mut;
 
 /// A UTF-8 encoded, growable string.
 ///
@@ -1825,6 +1827,17 @@ impl<A: AllocRef> String<A> {
     pub fn try_into_boxed_str(self) -> Result<Box<str, A>, TryReserveError> {
         let slice = self.vec.try_into_boxed_slice()?;
         unsafe { Ok(from_boxed_utf8_unchecked(slice)) }
+    }
+
+    pub fn leak_alloc<'a>(self) -> (Option<NonNull<str>>, &'a mut str, A)
+        where str: 'a,
+    {
+        unsafe {
+            let (ptr, str, alloc) = self.vec.leak_alloc();
+            let ptr = ptr.map(|p| NonNull::new_unchecked(p.as_ptr() as *mut str) );
+            let str = from_utf8_unchecked_mut(str);
+            (ptr, str, alloc)
+        }
     }
 }
 

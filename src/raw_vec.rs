@@ -5,7 +5,7 @@ use core::{
     cmp,
     mem::{self, ManuallyDrop, MaybeUninit},
     ops::Drop,
-    ptr::{self, NonNull, Unique},
+    ptr::{self, NonNull, slice_from_raw_parts_mut, Unique},
     slice,
 };
 
@@ -405,6 +405,21 @@ impl<T, A: AllocRef> RawVec<T, A> {
             Err(CapacityOverflow) => capacity_overflow(),
             Err(AllocError { layout, .. }) => handle_alloc_error(layout),
             Ok(()) => { /* yay */ }
+        }
+    }
+
+    pub fn leak(self) -> (Option<NonNull<[u8]>>, A) {
+        unsafe {
+            let this = ManuallyDrop::new(self);
+            let ptr = if let Some((ptr, layout)) = this.current_memory() {
+                let ptr = slice_from_raw_parts_mut(ptr.as_ptr(), layout.size());
+                NonNull::new(ptr)
+            } else {
+                None
+            };
+            let alloc = ptr::read(&this.alloc);
+
+            (ptr, alloc)
         }
     }
 }

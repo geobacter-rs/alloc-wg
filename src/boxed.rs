@@ -83,7 +83,6 @@ use crate::{
     clone::CloneIn,
     collections::TryReserveError,
     handle_reserve_error,
-    ptr::Unique,
     raw_vec::RawVec,
 };
 use core::{
@@ -98,7 +97,7 @@ use core::{
     mem::MaybeUninit,
     ops::{Deref, DerefMut},
     pin::Pin,
-    ptr::{self, NonNull},
+    ptr::{self, NonNull, Unique},
     task::{Context, Poll},
 };
 

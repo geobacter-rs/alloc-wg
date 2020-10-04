@@ -1732,6 +1732,17 @@ impl<T, A: AllocRef> Vec<T, A> {
     pub fn alloc_ref_mut(&mut self) -> &mut A {
         self.buf.alloc_mut()
     }
+
+    pub fn leak_alloc<'a>(self) -> (Option<NonNull<[u8]>>, &'a mut [T], A)
+        where T: 'a,
+    {
+        unsafe {
+            let mut this = mem::ManuallyDrop::new(self);
+            let slice = &mut this[..] as *mut [T];
+            let (mem, alloc) = ptr::read(&this.buf).leak();
+            (mem, &mut *slice, alloc)
+        }
+    }
 }
 
 impl<T: Clone, A: AllocRef> Vec<T, A> {
@@ -2288,7 +2299,7 @@ impl<T, A: AllocRef> TryExtend<T> for Vec<T, A> {
     }
 }
 
-trait SpecExtend<T, I, A: AllocRef>: Sized {
+pub(crate) trait SpecExtend<T, I, A: AllocRef>: Sized {
     #[inline]
     fn from_iter_in(iter: I, a: A) -> Self {
         handle_reserve_error(Self::try_from_iter_in(iter, a))

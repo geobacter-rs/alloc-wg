@@ -31,12 +31,11 @@
 // - A node of length `n` has `n` keys, `n` values, and (in an internal node) `n + 1` edges.
 //   This implies that even an empty internal node has at least one edge.
 
-use crate::ptr::Unique;
 use core::{
     cmp::Ordering,
     marker::PhantomData,
     mem::{self, MaybeUninit},
-    ptr::{self, NonNull},
+    ptr::{self, NonNull, Unique},
     slice,
 };
 
