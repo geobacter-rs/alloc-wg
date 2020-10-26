@@ -54,6 +54,7 @@
 )]
 #![feature(btree_drain_filter)]
 #![feature(map_first_last)]
+#![feature(layout_for_ptr)]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![doc(test(attr(
     deny(

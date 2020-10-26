@@ -29,6 +29,7 @@ use crate::collections::TryReserveError;
 use crate::iter::FromIteratorIn;
 use crate::string::String;
 use crate::vec::{Vec, SpecExtend};
+use crate::slice::from_raw_parts;
 
 #[cfg(test)]
 mod tests;
@@ -1001,6 +1002,15 @@ impl<T: ?Sized, A: AllocRef> Arc<T, A> {
         unsafe { &raw const (*ptr).data }
     }
 
+    #[inline(always)]
+    pub fn as_inner_ptr(this: &Self) -> NonNull<[u8]> {
+        let ptr: NonNull<u8> = this.ptr.cast();
+        let layout = unsafe { Layout::for_value_raw(this.ptr.as_ptr()) };
+        NonNull::from(unsafe {
+            from_raw_parts(ptr.as_ptr(), layout.size())
+        })
+    }
+
     /// Constructs an `Arc<T>` from a raw pointer.
     ///
     /// The raw pointer must have been previously returned by a call to
@@ -1269,6 +1279,13 @@ impl<T: ?Sized, A: AllocRef> Arc<T, A> {
     /// [`ptr::eq`]: core::ptr::eq
     pub fn ptr_eq(this: &Self, other: &Self) -> bool {
         this.ptr.as_ptr() == other.ptr.as_ptr()
+    }
+
+    #[inline(always)]
+    pub fn alloc_ref(this: &Self) -> &A
+        where A: Sync,
+    {
+        &this.inner().alloc
     }
 }
 
@@ -2251,6 +2268,44 @@ impl<T: ?Sized, A: AllocRef> Weak<T, A> {
                 }
             })
             .unwrap_or(0)
+    }
+
+    #[inline]
+    pub fn as_inner_ptr(&self) -> Option<NonNull<[u8]>> {
+        if is_dangling(self.ptr) {
+            None
+        } else {
+            Some({
+                let ptr: NonNull<u8> = self.ptr.cast();
+                let layout = unsafe { Layout::for_value_raw(self.ptr.as_ptr()) };
+                NonNull::from(unsafe {
+                    from_raw_parts(ptr.as_ptr(), layout.size())
+                })
+            })
+        }
+    }
+
+    /// Gets the allocator used to allocate the original Arc for this weak ref. This alloc
+    /// instance isn't dropped until the last Weak ref is dropped.
+    /// Note that Weak::new() doesn't allocate, and so won't have an allocator instance to return
+    /// here.
+    #[inline]
+    pub fn alloc_ref(&self) -> Option<&A>
+        where A: Sync,
+    {
+        if is_dangling(self.ptr) {
+            None
+        } else {
+            // We are careful to *not* create a reference covering the "data" field, as
+            // the field may be mutated concurrently (for example, if the last `Arc`
+            // is dropped, the data field will be dropped in-place).
+            // The allocator instance will be valid as long as the last weak ref is still held,
+            // so this is safe.
+            Some(unsafe {
+                let ptr = self.ptr.as_ptr();
+                &(*ptr).alloc
+            })
+        }
     }
 
     /// Returns `None` when the pointer is dangling and there is no allocated `ArcInner`,
